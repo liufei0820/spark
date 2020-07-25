@@ -17,8 +17,6 @@
 
 package org.apache.spark.sql.catalyst.expressions
 
-import org.apache.commons.lang.StringUtils
-
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult.TypeCheckFailure
@@ -45,12 +43,12 @@ case class TimeWindow(
       slideDuration: Expression,
       startTime: Expression) = {
     this(timeColumn, TimeWindow.parseExpression(windowDuration),
-      TimeWindow.parseExpression(windowDuration), TimeWindow.parseExpression(startTime))
+      TimeWindow.parseExpression(slideDuration), TimeWindow.parseExpression(startTime))
   }
 
   def this(timeColumn: Expression, windowDuration: Expression, slideDuration: Expression) = {
     this(timeColumn, TimeWindow.parseExpression(windowDuration),
-      TimeWindow.parseExpression(windowDuration), 0)
+      TimeWindow.parseExpression(slideDuration), 0)
   }
 
   def this(timeColumn: Expression, windowDuration: Expression) = {
@@ -106,20 +104,7 @@ object TimeWindow {
    *         precision.
    */
   private def getIntervalInMicroSeconds(interval: String): Long = {
-    if (StringUtils.isBlank(interval)) {
-      throw new IllegalArgumentException(
-        "The window duration, slide duration and start time cannot be null or blank.")
-    }
-    val intervalString = if (interval.startsWith("interval")) {
-      interval
-    } else {
-      "interval " + interval
-    }
-    val cal = CalendarInterval.fromString(intervalString)
-    if (cal == null) {
-      throw new IllegalArgumentException(
-        s"The provided interval ($interval) did not correspond to a valid interval string.")
-    }
+    val cal = CalendarInterval.fromCaseInsensitiveString(interval)
     if (cal.months > 0) {
       throw new IllegalArgumentException(
         s"Intervals greater than a month is not supported ($interval).")
@@ -152,12 +137,15 @@ object TimeWindow {
 }
 
 /**
- * Expression used internally to convert the TimestampType to Long without losing
+ * Expression used internally to convert the TimestampType to Long and back without losing
  * precision, i.e. in microseconds. Used in time windowing.
  */
-case class PreciseTimestamp(child: Expression) extends UnaryExpression with ExpectsInputTypes {
-  override def inputTypes: Seq[AbstractDataType] = Seq(TimestampType)
-  override def dataType: DataType = LongType
+case class PreciseTimestampConversion(
+    child: Expression,
+    fromType: DataType,
+    toType: DataType) extends UnaryExpression with ExpectsInputTypes {
+  override def inputTypes: Seq[AbstractDataType] = Seq(fromType)
+  override def dataType: DataType = toType
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
     val eval = child.genCode(ctx)
     ev.copy(code = eval.code +
@@ -165,4 +153,5 @@ case class PreciseTimestamp(child: Expression) extends UnaryExpression with Expe
          |${ctx.javaType(dataType)} ${ev.value} = ${eval.value};
        """.stripMargin)
   }
+  override def nullSafeEval(input: Any): Any = input
 }

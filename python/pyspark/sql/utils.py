@@ -45,9 +45,15 @@ class IllegalArgumentException(CapturedException):
     """
 
 
-class ContinuousQueryException(CapturedException):
+class StreamingQueryException(CapturedException):
     """
-    Exception that stopped a :class:`ContinuousQuery`.
+    Exception that stopped a :class:`StreamingQuery`.
+    """
+
+
+class QueryExecutionException(CapturedException):
+    """
+    Failed to execute a query.
     """
 
 
@@ -61,10 +67,14 @@ def capture_sql_exception(f):
                                              e.java_exception.getStackTrace()))
             if s.startswith('org.apache.spark.sql.AnalysisException: '):
                 raise AnalysisException(s.split(': ', 1)[1], stackTrace)
+            if s.startswith('org.apache.spark.sql.catalyst.analysis'):
+                raise AnalysisException(s.split(': ', 1)[1], stackTrace)
             if s.startswith('org.apache.spark.sql.catalyst.parser.ParseException: '):
                 raise ParseException(s.split(': ', 1)[1], stackTrace)
-            if s.startswith('org.apache.spark.sql.ContinuousQueryException: '):
-                raise ContinuousQueryException(s.split(': ', 1)[1], stackTrace)
+            if s.startswith('org.apache.spark.sql.streaming.StreamingQueryException: '):
+                raise StreamingQueryException(s.split(': ', 1)[1], stackTrace)
+            if s.startswith('org.apache.spark.sql.execution.QueryExecutionException: '):
+                raise QueryExecutionException(s.split(': ', 1)[1], stackTrace)
             if s.startswith('java.lang.IllegalArgumentException: '):
                 raise IllegalArgumentException(s.split(': ', 1)[1], stackTrace)
             raise
@@ -85,7 +95,7 @@ def install_exception_handler():
     original = py4j.protocol.get_return_value
     # The original `get_return_value` is not patched, it's idempotent.
     patched = capture_sql_exception(original)
-    # only patch the one used in in py4j.java_gateway (call Java API)
+    # only patch the one used in py4j.java_gateway (call Java API)
     py4j.java_gateway.get_return_value = patched
 
 
@@ -100,3 +110,37 @@ def toJArray(gateway, jtype, arr):
     for i in range(0, len(arr)):
         jarr[i] = arr[i]
     return jarr
+
+
+def require_minimum_pandas_version():
+    """ Raise ImportError if minimum version of Pandas is not installed
+    """
+    # TODO(HyukjinKwon): Relocate and deduplicate the version specification.
+    minimum_pandas_version = "0.19.2"
+
+    from distutils.version import LooseVersion
+    try:
+        import pandas
+    except ImportError:
+        raise ImportError("Pandas >= %s must be installed; however, "
+                          "it was not found." % minimum_pandas_version)
+    if LooseVersion(pandas.__version__) < LooseVersion(minimum_pandas_version):
+        raise ImportError("Pandas >= %s must be installed; however, "
+                          "your version was %s." % (minimum_pandas_version, pandas.__version__))
+
+
+def require_minimum_pyarrow_version():
+    """ Raise ImportError if minimum version of pyarrow is not installed
+    """
+    # TODO(HyukjinKwon): Relocate and deduplicate the version specification.
+    minimum_pyarrow_version = "0.8.0"
+
+    from distutils.version import LooseVersion
+    try:
+        import pyarrow
+    except ImportError:
+        raise ImportError("PyArrow >= %s must be installed; however, "
+                          "it was not found." % minimum_pyarrow_version)
+    if LooseVersion(pyarrow.__version__) < LooseVersion(minimum_pyarrow_version):
+        raise ImportError("PyArrow >= %s must be installed; however, "
+                          "your version was %s." % (minimum_pyarrow_version, pyarrow.__version__))

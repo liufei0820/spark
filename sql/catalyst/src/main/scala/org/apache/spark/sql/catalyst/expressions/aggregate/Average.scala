@@ -17,15 +17,15 @@
 
 package org.apache.spark.sql.catalyst.expressions.aggregate
 
-import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
+import org.apache.spark.sql.catalyst.analysis.{DecimalPrecision, TypeCheckResult}
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.util.TypeUtils
 import org.apache.spark.sql.types._
 
 @ExpressionDescription(
-  usage = "_FUNC_(x) - Returns the mean calculated from values of a group.")
-case class Average(child: Expression) extends DeclarativeAggregate {
+  usage = "_FUNC_(expr) - Returns the mean calculated from values of a group.")
+case class Average(child: Expression) extends DeclarativeAggregate with ImplicitCastInputTypes {
 
   override def prettyName: String = "avg"
 
@@ -77,10 +77,10 @@ case class Average(child: Expression) extends DeclarativeAggregate {
 
   // If all input are nulls, count will be 0 and we will get null after the division.
   override lazy val evaluateExpression = child.dataType match {
-    case DecimalType.Fixed(p, s) =>
-      // increase the precision and scale to prevent precision loss
-      val dt = DecimalType.bounded(p + 14, s + 4)
-      Cast(Cast(sum, dt) / Cast(count, dt), resultType)
+    case _: DecimalType =>
+      Cast(
+        DecimalPrecision.decimalAndDecimal(sum / Cast(count, DecimalType.LongDecimal)),
+        resultType)
     case _ =>
       Cast(sum, resultType) / Cast(count, resultType)
   }

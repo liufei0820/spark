@@ -78,7 +78,8 @@ class BinaryClassificationMetrics @Since("1.3.0") (
    * Returns the receiver operating characteristic (ROC) curve,
    * which is an RDD of (false positive rate, true positive rate)
    * with (0.0, 0.0) prepended and (1.0, 1.0) appended to it.
-   * @see http://en.wikipedia.org/wiki/Receiver_operating_characteristic
+   * @see <a href="http://en.wikipedia.org/wiki/Receiver_operating_characteristic">
+   * Receiver operating characteristic (Wikipedia)</a>
    */
   @Since("1.0.0")
   def roc(): RDD[(Double, Double)] = {
@@ -97,15 +98,16 @@ class BinaryClassificationMetrics @Since("1.3.0") (
 
   /**
    * Returns the precision-recall curve, which is an RDD of (recall, precision),
-   * NOT (precision, recall), with (0.0, 1.0) prepended to it.
-   * @see http://en.wikipedia.org/wiki/Precision_and_recall
+   * NOT (precision, recall), with (0.0, p) prepended to it, where p is the precision
+   * associated with the lowest recall on the curve.
+   * @see <a href="http://en.wikipedia.org/wiki/Precision_and_recall">
+   * Precision and recall (Wikipedia)</a>
    */
   @Since("1.0.0")
   def pr(): RDD[(Double, Double)] = {
     val prCurve = createCurve(Recall, Precision)
-    val sc = confusions.context
-    val first = sc.makeRDD(Seq((0.0, 1.0)), 1)
-    first.union(prCurve)
+    val (_, firstPrecision) = prCurve.first()
+    confusions.context.parallelize(Seq((0.0, firstPrecision)), 1).union(prCurve)
   }
 
   /**
@@ -118,7 +120,7 @@ class BinaryClassificationMetrics @Since("1.3.0") (
    * Returns the (threshold, F-Measure) curve.
    * @param beta the beta factor in F-Measure computation.
    * @return an RDD of (threshold, F-Measure) pairs.
-   * @see http://en.wikipedia.org/wiki/F1_score
+   * @see <a href="http://en.wikipedia.org/wiki/F1_score">F1 score (Wikipedia)</a>
    */
   @Since("1.0.0")
   def fMeasureByThreshold(beta: Double): RDD[(Double, Double)] = createCurve(FMeasure(beta))
@@ -173,12 +175,15 @@ class BinaryClassificationMetrics @Since("1.3.0") (
             grouping = Int.MaxValue
           }
           counts.mapPartitions(_.grouped(grouping.toInt).map { pairs =>
-            // The score of the combined point will be just the first one's score
-            val firstScore = pairs.head._1
-            // The point will contain all counts in this chunk
+            // The score of the combined point will be just the last one's score, which is also
+            // the minimal in each chunk since all scores are already sorted in descending.
+            val lastScore = pairs.last._1
+            // The combined point will contain all counts in this chunk. Thus, calculated
+            // metrics (like precision, recall, etc.) on its score (or so-called threshold) are
+            // the same as those without sampling.
             val agg = new BinaryLabelCounter()
             pairs.foreach(pair => agg += pair._2)
-            (firstScore, agg)
+            (lastScore, agg)
           })
         }
       }

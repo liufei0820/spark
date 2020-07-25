@@ -22,22 +22,22 @@ import scala.collection.mutable
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 
-import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.annotation.InterfaceStability
 
 
 /**
- * :: DeveloperApi ::
- *
  * Metadata is a wrapper over Map[String, Any] that limits the value type to simple ones: Boolean,
  * Long, Double, String, Metadata, Array[Boolean], Array[Long], Array[Double], Array[String], and
  * Array[Metadata]. JSON is used for serialization.
  *
  * The default constructor is private. User should use either [[MetadataBuilder]] or
- * [[Metadata.fromJson()]] to create Metadata instances.
+ * `Metadata.fromJson()` to create Metadata instances.
  *
  * @param map an immutable map that stores the data
+ *
+ * @since 1.3.0
  */
-@DeveloperApi
+@InterfaceStability.Stable
 sealed class Metadata private[types] (private[types] val map: Map[String, Any])
   extends Serializable {
 
@@ -104,7 +104,8 @@ sealed class Metadata private[types] (private[types] val map: Map[String, Any])
     }
   }
 
-  override def hashCode: Int = Metadata.hash(this)
+  private lazy val _hashCode: Int = Metadata.hash(this)
+  override def hashCode: Int = _hashCode
 
   private def get[T](key: String): T = {
     map(key).asInstanceOf[T]
@@ -113,10 +114,16 @@ sealed class Metadata private[types] (private[types] val map: Map[String, Any])
   private[sql] def jsonValue: JValue = Metadata.toJsonValue(this)
 }
 
+/**
+ * @since 1.3.0
+ */
+@InterfaceStability.Stable
 object Metadata {
 
+  private[this] val _empty = new Metadata(Map.empty)
+
   /** Returns an empty Metadata. */
-  def empty: Metadata = new Metadata(Map.empty)
+  def empty: Metadata = _empty
 
   /** Creates a Metadata instance from JSON. */
   def fromJson(json: String): Metadata = {
@@ -170,7 +177,7 @@ object Metadata {
   private def toJsonValue(obj: Any): JValue = {
     obj match {
       case map: Map[_, _] =>
-        val fields = map.toList.map { case (k: String, v) => (k, toJsonValue(v)) }
+        val fields = map.toList.map { case (k, v) => (k.toString, toJsonValue(v)) }
         JObject(fields)
       case arr: Array[_] =>
         val values = arr.toList.map(toJsonValue)
@@ -183,6 +190,8 @@ object Metadata {
         JBool(x)
       case x: String =>
         JString(x)
+      case null =>
+        JNull
       case x: Metadata =>
         toJsonValue(x.map)
       case other =>
@@ -215,11 +224,11 @@ object Metadata {
 }
 
 /**
- * :: DeveloperApi ::
- *
  * Builder for [[Metadata]]. If there is a key collision, the latter will overwrite the former.
+ *
+ * @since 1.3.0
  */
-@DeveloperApi
+@InterfaceStability.Stable
 class MetadataBuilder {
 
   private val map: mutable.Map[String, Any] = mutable.Map.empty

@@ -24,10 +24,10 @@ import org.apache.spark.sql.catalyst.expressions.aggregate.NoOp
 abstract class BaseMutableProjection extends MutableProjection
 
 /**
- * Generates byte code that produces a [[MutableRow]] object that can update itself based on a new
+ * Generates byte code that produces a [[InternalRow]] object that can update itself based on a new
  * input [[InternalRow]] for a fixed set of [[Expression Expressions]].
  * It exposes a `target` method, which is used to set the row that will be updated.
- * The internal [[MutableRow]] object created internally is used only when `target` is not used.
+ * The internal [[InternalRow]] object created internally is used only when `target` is not used.
  */
 object GenerateMutableProjection extends CodeGenerator[Seq[Expression], MutableProjection] {
 
@@ -57,44 +57,40 @@ object GenerateMutableProjection extends CodeGenerator[Seq[Expression], MutableP
       case _ => true
     }.unzip
     val exprVals = ctx.generateExpressions(validExpr, useSubexprElimination)
-    val projectionCodes = exprVals.zip(index).map {
+
+    // 4-tuples: (code for projection, isNull variable name, value variable name, column index)
+    val projectionCodes: Seq[(String, String, String, Int)] = exprVals.zip(index).map {
       case (ev, i) =>
         val e = expressions(i)
+        val value = ctx.addMutableState(ctx.javaType(e.dataType), "value")
         if (e.nullable) {
-          val isNull = s"isNull_$i"
-          val value = s"value_$i"
-          ctx.addMutableState("boolean", isNull, s"this.$isNull = true;")
-          ctx.addMutableState(ctx.javaType(e.dataType), value,
-            s"this.$value = ${ctx.defaultValue(e.dataType)};")
-          s"""
-            ${ev.code}
-            this.$isNull = ${ev.isNull};
-            this.$value = ${ev.value};
-           """
+          val isNull = ctx.addMutableState(ctx.JAVA_BOOLEAN, "isNull")
+          (s"""
+              |${ev.code}
+              |$isNull = ${ev.isNull};
+              |$value = ${ev.value};
+            """.stripMargin, isNull, value, i)
         } else {
-          val value = s"value_$i"
-          ctx.addMutableState(ctx.javaType(e.dataType), value,
-            s"this.$value = ${ctx.defaultValue(e.dataType)};")
-          s"""
-            ${ev.code}
-            this.$value = ${ev.value};
-           """
+          (s"""
+              |${ev.code}
+              |$value = ${ev.value};
+            """.stripMargin, ev.isNull, value, i)
         }
     }
 
     // Evaluate all the subexpressions.
     val evalSubexpr = ctx.subexprFunctions.mkString("\n")
 
-    val updates = validExpr.zip(index).map {
-      case (e, i) =>
-        val ev = ExprCode("", s"this.isNull_$i", s"this.value_$i")
+    val updates = validExpr.zip(projectionCodes).map {
+      case (e, (_, isNull, value, i)) =>
+        val ev = ExprCode("", isNull, value)
         ctx.updateColumn("mutableRow", e.dataType, i, ev, e.nullable)
     }
 
-    val allProjections = ctx.splitExpressions(ctx.INPUT_ROW, projectionCodes)
-    val allUpdates = ctx.splitExpressions(ctx.INPUT_ROW, updates)
+    val allProjections = ctx.splitExpressionsWithCurrentInputs(projectionCodes.map(_._1))
+    val allUpdates = ctx.splitExpressionsWithCurrentInputs(updates)
 
-    val code = s"""
+    val codeBody = s"""
       public java.lang.Object generate(Object[] references) {
         return new SpecificMutableProjection(references);
       }
@@ -102,9 +98,8 @@ object GenerateMutableProjection extends CodeGenerator[Seq[Expression], MutableP
       class SpecificMutableProjection extends ${classOf[BaseMutableProjection].getName} {
 
         private Object[] references;
-        private MutableRow mutableRow;
+        private InternalRow mutableRow;
         ${ctx.declareMutableStates()}
-        ${ctx.declareAddedFunctions()}
 
         public SpecificMutableProjection(Object[] references) {
           this.references = references;
@@ -112,7 +107,11 @@ object GenerateMutableProjection extends CodeGenerator[Seq[Expression], MutableP
           ${ctx.initMutableStates()}
         }
 
-        public ${classOf[BaseMutableProjection].getName} target(MutableRow row) {
+        public void initialize(int partitionIndex) {
+          ${ctx.initPartition()}
+        }
+
+        public ${classOf[BaseMutableProjection].getName} target(InternalRow row) {
           mutableRow = row;
           return this;
         }
@@ -130,12 +129,16 @@ object GenerateMutableProjection extends CodeGenerator[Seq[Expression], MutableP
           $allUpdates
           return mutableRow;
         }
+
+        ${ctx.declareAddedFunctions()}
       }
     """
 
+    val code = CodeFormatter.stripOverlappingComments(
+      new CodeAndComment(codeBody, ctx.getPlaceHolderToComments()))
     logDebug(s"code for ${expressions.mkString(",")}:\n${CodeFormatter.format(code)}")
 
-    val c = CodeGenerator.compile(code)
-    c.generate(ctx.references.toArray).asInstanceOf[MutableProjection]
+    val (clazz, _) = CodeGenerator.compile(code)
+    clazz.generate(ctx.references.toArray).asInstanceOf[MutableProjection]
   }
 }

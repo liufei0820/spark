@@ -15,13 +15,6 @@
 # limitations under the License.
 #
 
-from __future__ import print_function
-
-import sys
-
-from pyspark import SparkContext
-from functools import reduce
-
 """
 Read data file users.avro in local Spark distro:
 
@@ -50,6 +43,13 @@ $ ./bin/spark-submit --driver-class-path /path/to/example/jar \
 {u'favorite_color': None, u'name': u'Alyssa'}
 {u'favorite_color': u'red', u'name': u'Ben'}
 """
+from __future__ import print_function
+
+import sys
+
+from functools import reduce
+from pyspark.sql import SparkSession
+
 if __name__ == "__main__":
     if len(sys.argv) != 2 and len(sys.argv) != 3:
         print("""
@@ -64,7 +64,13 @@ if __name__ == "__main__":
         exit(-1)
 
     path = sys.argv[1]
-    sc = SparkContext(appName="AvroKeyInputFormat")
+
+    spark = SparkSession\
+        .builder\
+        .appName("AvroKeyInputFormat")\
+        .getOrCreate()
+
+    sc = spark.sparkContext
 
     conf = None
     if len(sys.argv) == 3:
@@ -82,4 +88,4 @@ if __name__ == "__main__":
     for k in output:
         print(k)
 
-    sc.stop()
+    spark.stop()

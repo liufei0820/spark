@@ -51,7 +51,7 @@ object GradientBoostedTreeClassifierExample {
       .setMaxCategories(4)
       .fit(data)
 
-    // Split the data into training and test sets (30% held out for testing)
+    // Split the data into training and test sets (30% held out for testing).
     val Array(trainingData, testData) = data.randomSplit(Array(0.7, 0.3))
 
     // Train a GBT model.
@@ -59,6 +59,7 @@ object GradientBoostedTreeClassifierExample {
       .setLabelCol("indexedLabel")
       .setFeaturesCol("indexedFeatures")
       .setMaxIter(10)
+      .setFeatureSubsetStrategy("auto")
 
     // Convert indexed labels back to original labels.
     val labelConverter = new IndexToString()
@@ -66,11 +67,11 @@ object GradientBoostedTreeClassifierExample {
       .setOutputCol("predictedLabel")
       .setLabels(labelIndexer.labels)
 
-    // Chain indexers and GBT in a Pipeline
+    // Chain indexers and GBT in a Pipeline.
     val pipeline = new Pipeline()
       .setStages(Array(labelIndexer, featureIndexer, gbt, labelConverter))
 
-    // Train model.  This also runs the indexers.
+    // Train model. This also runs the indexers.
     val model = pipeline.fit(trainingData)
 
     // Make predictions.
@@ -79,16 +80,16 @@ object GradientBoostedTreeClassifierExample {
     // Select example rows to display.
     predictions.select("predictedLabel", "label", "features").show(5)
 
-    // Select (prediction, true label) and compute test error
+    // Select (prediction, true label) and compute test error.
     val evaluator = new MulticlassClassificationEvaluator()
       .setLabelCol("indexedLabel")
       .setPredictionCol("prediction")
-      .setMetricName("precision")
+      .setMetricName("accuracy")
     val accuracy = evaluator.evaluate(predictions)
-    println("Test Error = " + (1.0 - accuracy))
+    println(s"Test Error = ${1.0 - accuracy}")
 
     val gbtModel = model.stages(2).asInstanceOf[GBTClassificationModel]
-    println("Learned classification GBT model:\n" + gbtModel.toDebugString)
+    println(s"Learned classification GBT model:\n ${gbtModel.toDebugString}")
     // $example off$
 
     spark.stop()

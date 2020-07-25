@@ -20,16 +20,17 @@ package org.apache.spark.examples.ml
 
 import java.io.File
 
-import com.google.common.io.Files
 import scopt.OptionParser
 
 import org.apache.spark.examples.mllib.AbstractParams
-import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.ml.linalg.Vector
+import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.stat.MultivariateOnlineSummarizer
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import org.apache.spark.util.Utils
 
 /**
- * An example of how to use [[org.apache.spark.sql.DataFrame]] for ML. Run with
+ * An example of how to use [[DataFrame]] for ML. Run with
  * {{{
  * ./bin/run-example ml.DataFrameExample [options]
  * }}}
@@ -46,21 +47,20 @@ object DataFrameExample {
     val parser = new OptionParser[Params]("DataFrameExample") {
       head("DataFrameExample: an example app using DataFrame for ML.")
       opt[String]("input")
-        .text(s"input path to dataframe")
+        .text("input path to dataframe")
         .action((x, c) => c.copy(input = x))
       checkConfig { params =>
         success
       }
     }
 
-    parser.parse(args, defaultParams).map { params =>
-      run(params)
-    }.getOrElse {
-      sys.exit(1)
+    parser.parse(args, defaultParams) match {
+      case Some(params) => run(params)
+      case _ => sys.exit(1)
     }
   }
 
-  def run(params: Params) {
+  def run(params: Params): Unit = {
     val spark = SparkSession
       .builder
       .appName(s"DataFrameExample with $params")
@@ -80,13 +80,12 @@ object DataFrameExample {
     // Convert features column to an RDD of vectors.
     val features = df.select("features").rdd.map { case Row(v: Vector) => v }
     val featureSummary = features.aggregate(new MultivariateOnlineSummarizer())(
-      (summary, feat) => summary.add(feat),
+      (summary, feat) => summary.add(Vectors.fromML(feat)),
       (sum1, sum2) => sum1.merge(sum2))
     println(s"Selected features column with average values:\n ${featureSummary.mean.toString}")
 
     // Save the records in a parquet file.
-    val tmpDir = Files.createTempDir()
-    tmpDir.deleteOnExit()
+    val tmpDir = Utils.createTempDir()
     val outputDir = new File(tmpDir, "dataframe").toString
     println(s"Saving to $outputDir as Parquet file.")
     df.write.parquet(outputDir)
@@ -94,7 +93,7 @@ object DataFrameExample {
     // Load the records back.
     println(s"Loading Parquet file with UDT from $outputDir.")
     val newDF = spark.read.parquet(outputDir)
-    println(s"Schema from Parquet:")
+    println("Schema from Parquet:")
     newDF.printSchema()
 
     spark.stop()

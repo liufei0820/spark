@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
-from pyspark import since
+import sys
+
+from pyspark import since, _NoValue
 from pyspark.rdd import ignore_unicode_prefix
 
 
@@ -37,15 +39,16 @@ class RuntimeConfig(object):
 
     @ignore_unicode_prefix
     @since(2.0)
-    def get(self, key, default=None):
+    def get(self, key, default=_NoValue):
         """Returns the value of Spark runtime configuration property for the given key,
         assuming it is set.
         """
         self._checkType(key, "key")
-        if default is None:
+        if default is _NoValue:
             return self._jconf.get(key)
         else:
-            self._checkType(default, "default")
+            if default is not None:
+                self._checkType(default, "default")
             return self._jconf.get(key, default)
 
     @ignore_unicode_prefix
@@ -71,11 +74,14 @@ def _test():
     os.chdir(os.environ["SPARK_HOME"])
 
     globs = pyspark.sql.conf.__dict__.copy()
-    sc = SparkContext('local[4]', 'PythonTest')
-    globs['sc'] = sc
-    globs['spark'] = SparkSession(sc)
+    spark = SparkSession.builder\
+        .master("local[4]")\
+        .appName("sql.conf tests")\
+        .getOrCreate()
+    globs['sc'] = spark.sparkContext
+    globs['spark'] = spark
     (failure_count, test_count) = doctest.testmod(pyspark.sql.conf, globs=globs)
-    globs['sc'].stop()
+    spark.stop()
     if failure_count:
         exit(-1)
 

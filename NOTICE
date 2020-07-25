@@ -1,8 +1,33 @@
 Apache Spark
-Copyright 2014 The Apache Software Foundation.
+Copyright 2014 and onwards The Apache Software Foundation.
 
 This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
+
+
+Export Control Notice
+---------------------
+
+This distribution includes cryptographic software. The country in which you currently reside may have
+restrictions on the import, possession, use, and/or re-export to another country, of encryption software.
+BEFORE using any encryption software, please check your country's laws, regulations and policies concerning
+the import, possession, or use, and re-export of encryption software, to see if this is permitted. See
+<http://www.wassenaar.org/> for more information.
+
+The U.S. Government Department of Commerce, Bureau of Industry and Security (BIS), has classified this
+software as Export Commodity Control Number (ECCN) 5D002.C.1, which includes information security software
+using or performing cryptographic functions with asymmetric algorithms. The form and manner of this Apache
+Software Foundation distribution makes it eligible for export under the License Exception ENC Technology
+Software Unrestricted (TSU) exception (see the BIS Export Administration Regulations, Section 740.13) for
+both object code and source code.
+
+The following provides more details on the included cryptographic software:
+
+This software uses Apache Commons Crypto (https://commons.apache.org/proper/commons-crypto/) to
+support authentication, and encryption and decryption of data sent across the network between
+services.
+
+This software includes Bouncy Castle (http://bouncycastle.org/) to support the jets3t library.
 
 
 ========================================================================
@@ -421,9 +446,6 @@ Copyright (c) 2011, Terrence Parr.
 This product includes/uses ASM (http://asm.ow2.org/),
 Copyright (c) 2000-2007 INRIA, France Telecom.
 
-This product includes/uses org.json (http://www.json.org/java/index.html),
-Copyright (c) 2002 JSON.org
-
 This product includes/uses JLine (http://jline.sourceforge.net/),
 Copyright (c) 2002-2006, Marc Prud'hommeaux <mwp1@cornell.edu>.
 
@@ -450,6 +472,12 @@ Copyright (C) 2011 Google Inc.
 
 Apache Commons Pool
 Copyright 1999-2009 The Apache Software Foundation
+
+This product includes/uses Kubernetes & OpenShift 3 Java Client (https://github.com/fabric8io/kubernetes-client)
+Copyright (C) 2015 Red Hat, Inc.
+
+This product includes/uses OkHttp (https://github.com/square/okhttp)
+Copyright (C) 2012 The Android Open Source Project
 
 =========================================================================
 ==  NOTICE file corresponding to section 4(d) of the Apache License,   ==

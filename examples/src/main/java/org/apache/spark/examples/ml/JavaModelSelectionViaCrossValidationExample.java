@@ -43,7 +43,9 @@ import org.apache.spark.sql.SparkSession;
 public class JavaModelSelectionViaCrossValidationExample {
   public static void main(String[] args) {
     SparkSession spark = SparkSession
-      .builder().appName("JavaModelSelectionViaCrossValidationExample").getOrCreate();
+      .builder()
+      .appName("JavaModelSelectionViaCrossValidationExample")
+      .getOrCreate();
 
     // $example on$
     // Prepare training documents, which are labeled.
@@ -92,7 +94,9 @@ public class JavaModelSelectionViaCrossValidationExample {
     CrossValidator cv = new CrossValidator()
       .setEstimator(pipeline)
       .setEvaluator(new BinaryClassificationEvaluator())
-      .setEstimatorParamMaps(paramGrid).setNumFolds(2);  // Use 3+ in practice
+      .setEstimatorParamMaps(paramGrid)
+      .setNumFolds(2)  // Use 3+ in practice
+      .setParallelism(2);  // Evaluate up to 2 parameter settings in parallel
 
     // Run cross-validation, and choose the best set of parameters.
     CrossValidatorModel cvModel = cv.fit(training);

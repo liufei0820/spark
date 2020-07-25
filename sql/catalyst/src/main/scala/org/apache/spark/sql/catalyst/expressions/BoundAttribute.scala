@@ -31,7 +31,7 @@ import org.apache.spark.sql.types._
 case class BoundReference(ordinal: Int, dataType: DataType, nullable: Boolean)
   extends LeafExpression {
 
-  override def toString: String = s"input[$ordinal, ${dataType.simpleString}]"
+  override def toString: String = s"input[$ordinal, ${dataType.simpleString}, $nullable]"
 
   // Use special getter for primitive types (for UnsafeRow)
   override def eval(input: InternalRow): Any = {
@@ -59,21 +59,24 @@ case class BoundReference(ordinal: Int, dataType: DataType, nullable: Boolean)
   }
 
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
-    val javaType = ctx.javaType(dataType)
-    val value = ctx.getValue(ctx.INPUT_ROW, dataType, ordinal.toString)
     if (ctx.currentVars != null && ctx.currentVars(ordinal) != null) {
       val oev = ctx.currentVars(ordinal)
       ev.isNull = oev.isNull
       ev.value = oev.value
-      val code = oev.code
-      oev.code = ""
-      ev.copy(code = code)
-    } else if (nullable) {
-      ev.copy(code = s"""
-        boolean ${ev.isNull} = ${ctx.INPUT_ROW}.isNullAt($ordinal);
-        $javaType ${ev.value} = ${ev.isNull} ? ${ctx.defaultValue(dataType)} : ($value);""")
+      ev.copy(code = oev.code)
     } else {
-      ev.copy(code = s"""$javaType ${ev.value} = $value;""", isNull = "false")
+      assert(ctx.INPUT_ROW != null, "INPUT_ROW and currentVars cannot both be null.")
+      val javaType = ctx.javaType(dataType)
+      val value = ctx.getValue(ctx.INPUT_ROW, dataType, ordinal.toString)
+      if (nullable) {
+        ev.copy(code =
+          s"""
+             |boolean ${ev.isNull} = ${ctx.INPUT_ROW}.isNullAt($ordinal);
+             |$javaType ${ev.value} = ${ev.isNull} ? ${ctx.defaultValue(dataType)} : ($value);
+           """.stripMargin)
+      } else {
+        ev.copy(code = s"$javaType ${ev.value} = $value;", isNull = "false")
+      }
     }
   }
 }
@@ -82,16 +85,16 @@ object BindReferences extends Logging {
 
   def bindReference[A <: Expression](
       expression: A,
-      input: Seq[Attribute],
+      input: AttributeSeq,
       allowFailures: Boolean = false): A = {
     expression.transform { case a: AttributeReference =>
       attachTree(a, "Binding attribute") {
-        val ordinal = input.indexWhere(_.exprId == a.exprId)
+        val ordinal = input.indexOf(a.exprId)
         if (ordinal == -1) {
           if (allowFailures) {
             a
           } else {
-            sys.error(s"Couldn't find $a in ${input.mkString("[", ",", "]")}")
+            sys.error(s"Couldn't find $a in ${input.attrs.mkString("[", ",", "]")}")
           }
         } else {
           BoundReference(ordinal, a.dataType, input(ordinal).nullable)

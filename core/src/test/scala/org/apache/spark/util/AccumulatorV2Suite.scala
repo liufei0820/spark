@@ -18,6 +18,7 @@
 package org.apache.spark.util
 
 import org.apache.spark._
+import org.apache.spark.serializer.JavaSerializer
 
 class AccumulatorV2Suite extends SparkFunSuite {
 
@@ -88,7 +89,7 @@ class AccumulatorV2Suite extends SparkFunSuite {
   }
 
   test("ListAccumulator") {
-    val acc = new ListAccumulator[Double]
+    val acc = new CollectionAccumulator[Double]
     assert(acc.value.isEmpty)
     assert(acc.isZero)
 
@@ -116,6 +117,15 @@ class AccumulatorV2Suite extends SparkFunSuite {
     assert(acc.value.contains(2.0))
     assert(!acc.isZero)
     assert(acc.value.size() === 3)
+
+    val acc3 = acc.copy()
+    assert(acc3.value.contains(2.0))
+    assert(!acc3.isZero)
+    assert(acc3.value.size() === 3)
+
+    acc3.reset()
+    assert(acc3.isZero)
+    assert(acc3.value.isEmpty)
   }
 
   test("LegacyAccumulatorWrapper") {
@@ -144,5 +154,31 @@ class AccumulatorV2Suite extends SparkFunSuite {
     acc.merge(acc2)
     assert(acc.value === "baz")
     assert(!acc.isZero)
+
+    val acc3 = acc.copy()
+    assert(acc3.value === "baz")
+    assert(!acc3.isZero)
+
+    acc3.reset()
+    assert(acc3.isZero)
+    assert(acc3.value === "")
+  }
+
+  test("LegacyAccumulatorWrapper with AccumulatorParam that has no equals/hashCode") {
+    class MyData(val i: Int) extends Serializable
+    val param = new AccumulatorParam[MyData] {
+      override def zero(initialValue: MyData): MyData = new MyData(0)
+      override def addInPlace(r1: MyData, r2: MyData): MyData = new MyData(r1.i + r2.i)
+    }
+
+    val acc = new LegacyAccumulatorWrapper(new MyData(0), param)
+    acc.metadata = AccumulatorMetadata(
+      AccumulatorContext.newId(),
+      Some("test"),
+      countFailedValues = false)
+    AccumulatorContext.register(acc)
+
+    val ser = new JavaSerializer(new SparkConf).newInstance()
+    ser.serialize(acc)
   }
 }
